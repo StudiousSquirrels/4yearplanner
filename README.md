@@ -29,4 +29,4 @@ npm run dev
 ```
 
 The React app calls `/api/courses` and `/api/majors/CSC/requirements`; Vite
-proxies those requests to `http://localhost:3001`.
+proxies those requests to `http://localhost:3002`.
