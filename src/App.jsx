@@ -190,12 +190,19 @@ function App() {
   }
 
   function getBestSequencedOption(options, semesterIndex) {
-    return [...options].sort((first, second) => {
+    const sortedOptions = [...options].sort((first, second) => {
       return (
         getSequenceScore(first.code, semesterIndex) -
         getSequenceScore(second.code, semesterIndex)
       );
-    })[0];
+    });
+
+    const bestScore = getSequenceScore(sortedOptions[0].code, semesterIndex);
+    const nearBestOptions = sortedOptions.filter((option) => {
+      return getSequenceScore(option.code, semesterIndex) <= bestScore + 10;
+    });
+
+    return nearBestOptions[Math.floor(Math.random() * nearBestOptions.length)];
   }
 
   function countPriorCoursesMatchingRule(completedBefore, rule) {

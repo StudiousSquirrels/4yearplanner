@@ -51,6 +51,44 @@ INSERT INTO courses(dept, number, course_code, title, credits) VALUES
 ON CONFLICT (course_code) DO NOTHING;
 
 -- ------------------------------------------------------------
+-- Course offering terms and prerequisites used by the planner
+-- Keep course-level rules here, not in server/index.js.
+-- ------------------------------------------------------------
+INSERT INTO course_terms(course_id, term)
+SELECT c.id, v.term
+FROM courses c
+JOIN (VALUES
+  ('BCM 262','Fall'), ('BCM 262','Spring')
+) AS v(course_code, term) ON v.course_code = c.course_code
+ON CONFLICT DO NOTHING;
+
+DELETE FROM course_prerequisite_groups
+USING courses c
+WHERE course_prerequisite_groups.course_id = c.id
+  AND c.course_code = 'BCM 262';
+
+DELETE FROM course_prerequisites
+USING courses c
+WHERE course_prerequisites.course_id = c.id
+  AND c.course_code = 'BCM 262';
+
+INSERT INTO course_prerequisite_groups(
+  course_id,
+  group_code,
+  prerequisite_course_id,
+  can_be_corequisite
+)
+SELECT course.id, v.group_code, prereq.id, v.can_be_corequisite
+FROM (VALUES
+  ('BCM 262','bio251','BIO 251',false),
+  ('BCM 262','chm221','CHM 221',false),
+  ('BCM 262','chm222','CHM 222',true)
+) AS v(course_code, group_code, prerequisite_code, can_be_corequisite)
+JOIN courses course ON course.course_code = v.course_code
+JOIN courses prereq ON prereq.course_code = v.prerequisite_code
+ON CONFLICT DO NOTHING;
+
+-- ------------------------------------------------------------
 -- 3) Core Requirements
 -- ------------------------------------------------------------
 
