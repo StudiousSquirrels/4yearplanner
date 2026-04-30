@@ -634,11 +634,69 @@ function App() {
 
   return (
     <div className="app">
-      <h1 style={{ color: "black" }}>Grinnell 4-Year Planner</h1>
-      <p style={{ color: "black", marginTop: "10px" }}>
-        Click any course slot to enter a class and see degree requirements
-        update automatically.
-      </p>
+      {/* Header bar */}
+      <header
+        style={{
+          width: "100%",
+          backgroundColor: "#cc0033",
+          display: "flex",
+          alignItems: "center",
+          padding: "0 32px",
+          height: "64px",
+          boxSizing: "border-box",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+        }}
+      >
+        <img
+          src="/src/assets/grinnell-logo.png"
+          alt="Grinnell College logo"
+          style={{
+            height: "42px",
+            width: "auto",
+            flexShrink: 0,
+            marginRight: "14px",
+            filter: "brightness(0) invert(1)",
+          }}
+        />
+        <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
+          <span
+            style={{
+              color: "white",
+              fontWeight: "700",
+              fontSize: "17px",
+              fontFamily: "Georgia, serif",
+              letterSpacing: "0.3px",
+            }}
+          >
+            Grinnell College
+          </span>
+          <span
+            style={{
+              color: "rgba(255,255,255,0.75)",
+              fontSize: "12px",
+              letterSpacing: "0.5px",
+              textTransform: "uppercase",
+            }}
+          >
+            4-Year Planner
+          </span>
+        </div>
+      </header>
+
+      {/* Campus banner image */}
+      <div style={{ width: "100%", lineHeight: 0 }}>
+        <img
+          src="/src/assets/grinnell-campus.jpg"
+          alt="Grinnell College campus"
+          style={{
+            width: "100%",
+            height: "220px",
+            objectFit: "cover",
+            objectPosition: "center 65%",
+            display: "block",
+          }}
+        />
+      </div>
 
       <div
         style={{

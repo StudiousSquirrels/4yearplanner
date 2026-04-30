@@ -37,7 +37,7 @@ function SemestersTable({ semesters, onCourseSelect, courseOptions }) {
 
   return (
     <div>
-      <h2 style={{ color: "black" }}>8 Semester Plan</h2>
+      <h2 style={{ color: "black" }}>Full Course Plan</h2>
 
       <div
         style={{
