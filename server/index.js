@@ -307,6 +307,7 @@ app.get("/api/health", async (_req, res) => {
     await pool.query("SELECT 1");
     res.json({ ok: true });
   } catch (error) {
+    console.error("Health check error:", error);
     res.status(500).json({ ok: false, error: error.message });
   }
 });
@@ -316,6 +317,7 @@ app.get("/api/courses", async (req, res) => {
     const courses = await getCourses();
     res.json({ courses });
   } catch (error) {
+    console.error("Courses endpoint error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -325,6 +327,7 @@ app.get("/api/majors", async (_req, res) => {
     const majors = await getMajors();
     res.json({ majors });
   } catch (error) {
+    console.error("Majors endpoint error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -340,6 +343,7 @@ app.get("/api/majors/:code/requirements", async (req, res) => {
 
     res.json(requirements);
   } catch (error) {
+    console.error("Requirements endpoint error:", error);
     res.status(500).json({ error: error.message });
   }
 });
