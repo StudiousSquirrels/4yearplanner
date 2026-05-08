@@ -67,7 +67,7 @@ WHERE course_terms.course_id = c.id
     'MAT 209','MAT 215','MAT 218','MAT 220','MAT 222','MAT 271',
     'MAT 306','MAT 309','MAT 310','MAT 314','MAT 316','MAT 321',
     'MAT 324','MAT 326','MAT 331','MAT 335','MAT 336','MAT 338',
-    'MAT 444','SST 115'
+    'MAT 444','SST 115','STA 335','STA 336'
   );
 
 INSERT INTO course_terms(course_id, term)
@@ -98,6 +98,8 @@ JOIN (VALUES
   ('MAT 331','Fall'),
   ('MAT 335','Fall'),
   ('MAT 336','Spring'),
+  ('STA 335','Fall'),
+  ('STA 336','Spring'),
   ('MAT 338','Fall'),
   ('MAT 444','Spring')
 ) AS v(course_code, term) ON v.course_code = c.course_code
@@ -109,8 +111,9 @@ WHERE course_prerequisite_groups.course_id = c.id
   AND c.course_code IN (
     'MAT 115','MAT 124','MAT 133','MAT 209','MAT 215','MAT 218',
     'MAT 220','MAT 222','MAT 271','MAT 306','MAT 309','MAT 310',
-    'MAT 316','MAT 321','MAT 324','MAT 326','MAT 331','MAT 335',
-    'MAT 336','MAT 338'
+    'MAT 313','MAT 314','MAT 316','MAT 317','MAT 321','MAT 322',
+    'MAT 324','MAT 326','MAT 331','MAT 335','MAT 336','MAT 338',
+    'STA 335','STA 336'
   );
 
 DELETE FROM course_prerequisites
@@ -146,10 +149,14 @@ FROM (VALUES
   ('MAT 309','stats','MAT 336',false),
   ('MAT 310','stats','MAT 209',false),
   ('MAT 310','stats','MAT 336',false),
+  ('MAT 313','bridges','MAT 218',false),
+  ('MAT 314','mat313','MAT 313',false),
   ('MAT 316','bridges','MAT 218',false),
   ('MAT 316','bridges','MAT 222',false),
+  ('MAT 317','mat316','MAT 316',false),
   ('MAT 321','bridges','MAT 218',false),
   ('MAT 321','bridges','MAT 222',false),
+  ('MAT 322','mat321','MAT 321',false),
   ('MAT 324','mat321','MAT 321',false),
   ('MAT 326','mat321','MAT 321',false),
   ('MAT 331','mat316','MAT 316',false),
@@ -158,7 +165,14 @@ FROM (VALUES
   ('MAT 335','math_background','MAT 218',false),
   ('MAT 335','math_background','MAT 220',false),
   ('MAT 336','mat335','MAT 335',false),
-  ('MAT 338','mat316','MAT 316',false)
+  ('MAT 336','mat335','STA 335',false),
+  ('MAT 338','mat316','MAT 316',false),
+  ('STA 335','mat215','MAT 215',false),
+  ('STA 335','math_background','MAT 209',false),
+  ('STA 335','math_background','MAT 218',false),
+  ('STA 335','math_background','MAT 220',false),
+  ('STA 336','mat_or_sta_335','MAT 335',false),
+  ('STA 336','mat_or_sta_335','STA 335',false)
 ) AS v(course_code, group_code, prerequisite_code, can_be_corequisite)
 JOIN courses course ON course.course_code = v.course_code
 JOIN courses prereq ON prereq.course_code = v.prerequisite_code
@@ -182,7 +196,7 @@ SELECT c.id,
        v.notes
 FROM courses c
 JOIN (VALUES
-  ('MAT 115',1,NULL,NULL,NULL,NULL,'Second semester of first-year standing and two years of high school algebra.')
+  ('MAT 115',1,NULL,NULL::integer,NULL::integer,NULL::integer,'Second semester of first-year standing and two years of high school algebra.')
 ) AS v(
   course_code,
   min_semester_index,
@@ -201,7 +215,22 @@ SET min_semester_index = EXCLUDED.min_semester_index,
     notes = EXCLUDED.notes;
  
 -- ------------------------------------------------------------
--- 3) Core: MAT 215
+-- 3) Gateway: MAT 131 and MAT 133 (prerequisites for MAT 215)
+-- ------------------------------------------------------------
+INSERT INTO requirement_blocks(major_id, code, title, rule_type, sort_order)
+SELECT m.id, 'MAT_PREREQ_131', 'MAT 131 Calculus I', 'must_take', 5
+FROM majors m
+WHERE m.code = 'MAT'
+ON CONFLICT (major_id, code) DO NOTHING;
+
+INSERT INTO requirement_blocks(major_id, code, title, rule_type, sort_order)
+SELECT m.id, 'MAT_PREREQ_133', 'MAT 133 Calculus II', 'must_take', 7
+FROM majors m
+WHERE m.code = 'MAT'
+ON CONFLICT (major_id, code) DO NOTHING;
+
+-- ------------------------------------------------------------
+-- 4) Core: MAT 215
 -- ------------------------------------------------------------
 INSERT INTO requirement_blocks(major_id, code, title, rule_type, sort_order)
 SELECT m.id, 'MAT_CORE_215', 'MAT 215 Linear Algebra', 'must_take', 10
@@ -371,6 +400,26 @@ ON CONFLICT (major_id, code) DO NOTHING;
 -- 11) Attach course options
 -- ------------------------------------------------------------
  
+-- Gateway: MAT 131
+INSERT INTO block_course_options(block_id, course_id)
+SELECT b.id, c.id
+FROM requirement_blocks b
+JOIN majors m ON m.id = b.major_id
+JOIN courses c ON c.course_code = 'MAT 131'
+WHERE m.code = 'MAT'
+  AND b.code = 'MAT_PREREQ_131'
+ON CONFLICT DO NOTHING;
+
+-- Gateway: MAT 133
+INSERT INTO block_course_options(block_id, course_id)
+SELECT b.id, c.id
+FROM requirement_blocks b
+JOIN majors m ON m.id = b.major_id
+JOIN courses c ON c.course_code = 'MAT 133'
+WHERE m.code = 'MAT'
+  AND b.code = 'MAT_PREREQ_133'
+ON CONFLICT DO NOTHING;
+
 -- Core: MAT 215
 INSERT INTO block_course_options(block_id, course_id)
 SELECT b.id, c.id

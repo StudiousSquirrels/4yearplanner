@@ -127,7 +127,7 @@ function MajorRequirements({ semesters, coursesData, majorRequirements }) {
     if (block.ruleType === "choose_one") return "Choose 1";
     if (block.ruleType === "choose_n") return `Choose ${block.minCount || 1}`;
     if (block.ruleType === "choose_credits") return `${block.minCredits || 0} credits`;
-    if (block.ruleType === "or_group") return "One path";
+    if (block.ruleType === "or_group") return "One sequence";
     return "See notes";
   }
 
@@ -136,21 +136,56 @@ function MajorRequirements({ semesters, coursesData, majorRequirements }) {
     "CSC_ELECTIVE", "CSC_MATH_ELECTIVE", "CSC_TOTALS_AND_POLICIES",
   ]);
 
+  // For each or_group, compute whether any of its children is complete
+  const satisfiedOrParents = new Set();
+  for (const block of majorRequirements.blocks) {
+    if (block.ruleType !== "or_group" || !block.orChildCodes?.length) continue;
+    const childBlocks = majorRequirements.blocks.filter((b) =>
+      block.orChildCodes.includes(b.code),
+    );
+    const anyChildDone = childBlocks.some((child) => {
+      const s = getBlockStatus(child);
+      return s.completed;
+    });
+    if (anyChildDone) satisfiedOrParents.add(block.code);
+  }
+
   const blocks = majorRequirements.blocks.map((block) => {
+    // or_group parent: complete when any child is complete
+    if (block.ruleType === "or_group") {
+      const satisfied = satisfiedOrParents.has(block.code);
+      return {
+        block,
+        status: { completed: satisfied, completedCourses: [], completedCredits: 0 },
+        canAutoCheck: true,
+        completed: satisfied,
+        isNotNeeded: false,
+      };
+    }
+
     const status = getBlockStatus(block);
     const canAutoCheck =
       ["must_take", "choose_one", "choose_n", "choose_credits"].includes(block.ruleType) ||
       canAutoCheckCodes.has(block.code);
-    const completed = canAutoCheck && status.completed;
-    return { block, status, canAutoCheck, completed };
+    const actuallyCompleted = canAutoCheck && status.completed;
+
+    // Child of a satisfied or_group that was NOT the one actually completed → "not needed"
+    const isNotNeeded =
+      Boolean(block.orParentCode) &&
+      satisfiedOrParents.has(block.orParentCode) &&
+      !actuallyCompleted;
+
+    return { block, status, canAutoCheck, completed: actuallyCompleted, isNotNeeded };
   });
 
-  const completedCount = blocks.filter((b) => b.completed).length;
-  const total = blocks.length;
+  // Progress counts only top-level blocks (or_group parents, not each child separately)
+  const progressBlocks = blocks.filter((b) => !b.block.orParentCode);
+  const completedCount = progressBlocks.filter((b) => b.completed).length;
+  const total = progressBlocks.length;
   const pct = total ? Math.round((completedCount / total) * 100) : 0;
 
   return (
-    <div style={{ marginTop: "40px", textAlign: "left" }}>
+    <div className="requirements-section">
 
       {/* ── Header ── */}
       <div style={{
@@ -210,20 +245,23 @@ function MajorRequirements({ semesters, coursesData, majorRequirements }) {
           width: "2px", backgroundColor: "#e5e7eb", borderRadius: "1px",
         }} />
 
-        {blocks.map(({ block, status, canAutoCheck, completed }, idx) => {
+        {blocks.map(({ block, status, canAutoCheck, completed, isNotNeeded }, idx) => {
           const isOpen = collapsed[block.code] !== true;
           const hasCourses = block.courseCodes.length > 0;
 
           const dotColor = !hasCheckedPlan || !canAutoCheck
             ? "#d1d5db"
+            : isNotNeeded ? "#d1d5db"
             : completed ? "#16a34a" : "#ef4444";
 
           const borderColor = !hasCheckedPlan || !canAutoCheck
             ? "#e5e7eb"
+            : isNotNeeded ? "#e5e7eb"
             : completed ? "#bbf7d0" : "#fecaca";
 
           const rowBg = !hasCheckedPlan || !canAutoCheck
             ? "#fafafa"
+            : isNotNeeded ? "#fafafa"
             : completed ? "#f0fdf4" : "#fff5f5";
 
           return (
@@ -245,11 +283,13 @@ function MajorRequirements({ semesters, coursesData, majorRequirements }) {
                 boxShadow: "0 0 0 3px white",
                 zIndex: 1,
               }}>
-                {hasCheckedPlan && canAutoCheck && (completed ? "✓" : "")}
+                {hasCheckedPlan && canAutoCheck && !isNotNeeded && (completed ? "✓" : "")}
               </div>
 
               {/* Block row */}
               <div
+                className="req-block-row"
+                data-clickable={hasCourses ? "true" : "false"}
                 onClick={() => hasCourses && setCollapsed((p) => ({ ...p, [block.code]: !p[block.code] }))}
                 style={{
                   display: "flex", alignItems: "center", gap: "8px",
@@ -260,7 +300,7 @@ function MajorRequirements({ semesters, coursesData, majorRequirements }) {
                   cursor: hasCourses ? "pointer" : "default",
                   userSelect: "none",
                   borderLeft: `3px solid ${dotColor}`,
-                  transition: "background 0.15s",
+                  transition: "background 0.15s, filter 0.12s, transform 0.1s",
                 }}
               >
                 {/* Chevron */}
@@ -286,14 +326,25 @@ function MajorRequirements({ semesters, coursesData, majorRequirements }) {
                 )}
 
                 {/* Rule badge */}
-                <span style={{
-                  padding: "2px 8px", borderRadius: "999px",
-                  fontSize: "11px", fontWeight: 600,
-                  backgroundColor: "#f1f5f9", color: "#475569",
-                  border: "1px solid #e2e8f0", whiteSpace: "nowrap",
-                }}>
-                  {getRuleLabel(block)}
-                </span>
+                {hasCheckedPlan && isNotNeeded ? (
+                  <span style={{
+                    padding: "2px 8px", borderRadius: "999px",
+                    fontSize: "11px", fontWeight: 600,
+                    backgroundColor: "#f3f4f6", color: "#9ca3af",
+                    border: "1px solid #e5e7eb", whiteSpace: "nowrap",
+                  }}>
+                    Not needed
+                  </span>
+                ) : (
+                  <span style={{
+                    padding: "2px 8px", borderRadius: "999px",
+                    fontSize: "11px", fontWeight: 600,
+                    backgroundColor: "#f1f5f9", color: "#475569",
+                    border: "1px solid #e2e8f0", whiteSpace: "nowrap",
+                  }}>
+                    {getRuleLabel(block)}
+                  </span>
+                )}
               </div>
 
               {/* Notes */}

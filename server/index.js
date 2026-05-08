@@ -11,11 +11,15 @@ const supportedMajorCatalogOrder = [
   "ARH",
   "BCM",
   "BIO",
+  "CHI",
   "CHM",
   "CSC",
   "ECN",
   "ENG",
+  "FRN",
+  "GWS",
   "HIS",
+  "JPN",
   "MAT",
   "PHY",
   "POL",
@@ -28,11 +32,15 @@ const catalogProgramUrls = {
   ARH: "https://catalog.grinnell.edu/preview_program.php?catoid=38&poid=2775&returnto=6360",
   BCM: "https://catalog.grinnell.edu/preview_program.php?catoid=38&poid=2779&returnto=6360",
   BIO: "https://catalog.grinnell.edu/preview_program.php?catoid=38&poid=2778&returnto=6360",
+  CHI: "https://catalog.grinnell.edu/preview_program.php?catoid=38&poid=2781&returnto=6360",
   CHM: "https://catalog.grinnell.edu/preview_program.php?catoid=38&poid=2780&returnto=6360",
   CSC: "https://catalog.grinnell.edu/preview_program.php?catoid=38&poid=2783&returnto=6360",
   ECN: "https://catalog.grinnell.edu/preview_program.php?catoid=38&poid=2785&returnto=6360",
   ENG: "https://catalog.grinnell.edu/preview_program.php?catoid=38&poid=2787&returnto=6360",
+  FRN: "https://catalog.grinnell.edu/preview_program.php?catoid=38&poid=2790&returnto=6360",
+  GWS: "https://catalog.grinnell.edu/preview_program.php?catoid=38&poid=2793&returnto=6360",
   HIS: "https://catalog.grinnell.edu/preview_program.php?catoid=38&poid=2795&returnto=6360",
+  JPN: "https://catalog.grinnell.edu/preview_program.php?catoid=38&poid=2797&returnto=6360",
   MAT: "https://catalog.grinnell.edu/preview_program.php?catoid=38&poid=2799&returnto=6360",
   PHY: "https://catalog.grinnell.edu/preview_program.php?catoid=38&poid=2803&returnto=6360",
   POL: "https://catalog.grinnell.edu/preview_program.php?catoid=38&poid=2805&returnto=6360",
@@ -224,6 +232,26 @@ async function getMajorRequirements(majorCode) {
     [major.id],
   );
 
+  const { rows: orChildRows } = await pool.query(
+    `SELECT p.code AS parent_code, c.code AS child_code
+     FROM block_or_children boc
+     JOIN requirement_blocks p ON p.id = boc.parent_block_id
+     JOIN requirement_blocks c ON c.id = boc.child_block_id
+     WHERE p.major_id = $1`,
+    [major.id],
+  );
+
+  const orChildMap = {};
+  for (const row of orChildRows) {
+    if (!orChildMap[row.parent_code]) orChildMap[row.parent_code] = [];
+    orChildMap[row.parent_code].push(row.child_code);
+  }
+
+  const childParentMap = {};
+  for (const [parent, children] of Object.entries(orChildMap)) {
+    for (const child of children) childParentMap[child] = parent;
+  }
+
   const requirements = {};
   const blocks = blockRows.map((block) => ({
     code: block.block_code,
@@ -233,6 +261,8 @@ async function getMajorRequirements(majorCode) {
     minCredits: block.min_credits,
     notes: block.notes,
     courseCodes: block.course_codes.map(normalizeCourseCode),
+    orChildCodes: orChildMap[block.block_code] || [],
+    orParentCode: childParentMap[block.block_code] || null,
   }));
 
   for (const block of blockRows) {

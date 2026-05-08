@@ -68,8 +68,24 @@ INSERT INTO courses(dept, number, course_code, title, credits) VALUES
 -- ------------------------------------------------------------
 ('ANT',221,'ANT 221',NULL,4),
 ('NRS',250,'NRS 250',NULL,4),
-('PSY',336,'PSY 336',NULL,4)
+('PSY',336,'PSY 336',NULL,4),
 
-ON CONFLICT (course_code) DO NOTHING;
+-- ------------------------------------------------------------
+-- First-year Tutorial (universal Grinnell requirement)
+-- ------------------------------------------------------------
+('TUT',100,'TUT 100','Tutorial',4)
+
+ON CONFLICT (course_code) DO UPDATE
+SET title = EXCLUDED.title,
+    active = TRUE;
+
+INSERT INTO course_terms(course_id, term)
+SELECT c.id, v.term
+FROM courses c
+JOIN (VALUES
+  ('TUT 100', 'Fall'),
+  ('TUT 100', 'Spring')
+) AS v(course_code, term) ON v.course_code = c.course_code
+ON CONFLICT DO NOTHING;
 
 COMMIT;

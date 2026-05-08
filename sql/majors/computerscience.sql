@@ -145,8 +145,6 @@ FROM (VALUES
   ('CSC 205','csc151','CSC 151',false),
   ('CSC 207','csc161','CSC 161',false),
   ('CSC 208','csc151','CSC 151',false),
-  ('CSC 208','math','MAT 124',false),
-  ('CSC 208','math','MAT 131',false),
   ('CSC 211','csc161','CSC 161',false),
   ('CSC 213','csc161','CSC 161',false),
   ('CSC 214','csc161','CSC 161',false),

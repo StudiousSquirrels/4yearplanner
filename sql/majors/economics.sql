@@ -323,6 +323,28 @@ INSERT INTO requirement_blocks(
   major_id, code, title, rule_type, min_credits, notes, sort_order
 )
 SELECT m.id,
+       'ECN_MATH_PREREQ',
+       'Calculus prerequisite (MAT 124 or MAT 131)',
+       'choose_one',
+       1,
+       'Required before ECN 280, ECN 282, and ECN 338. Complete MAT 124 or MAT 131.',
+       85
+FROM majors m
+WHERE m.code = 'ECN'
+ON CONFLICT (major_id, code) DO NOTHING;
+
+INSERT INTO requirement_blocks(major_id, code, title, rule_type, sort_order)
+SELECT m.id,
+       'ECN_STATS_PREREQ',
+       'Statistics prerequisite (MAT 209)',
+       'must_take',
+       87
+FROM majors m
+WHERE m.code = 'ECN'
+ON CONFLICT (major_id, code) DO NOTHING;
+
+INSERT INTO requirement_blocks(major_id, code, title, rule_type, min_credits, notes, sort_order)
+SELECT m.id,
        'ECN_TOTALS',
        'Major totals and course-minimum rules',
        'custom',
@@ -336,6 +358,26 @@ ON CONFLICT (major_id, code) DO NOTHING;
 -- ------------------------------------------------------------
 -- 10) Attach course options
 -- ------------------------------------------------------------
+
+-- Math prereq: MAT 124 or MAT 131
+INSERT INTO block_course_options(block_id, course_id)
+SELECT b.id, c.id
+FROM requirement_blocks b
+JOIN majors m ON m.id = b.major_id
+JOIN courses c ON c.course_code IN ('MAT 124', 'MAT 131')
+WHERE m.code = 'ECN'
+  AND b.code = 'ECN_MATH_PREREQ'
+ON CONFLICT DO NOTHING;
+
+-- Stats prereq: MAT 209
+INSERT INTO block_course_options(block_id, course_id)
+SELECT b.id, c.id
+FROM requirement_blocks b
+JOIN majors m ON m.id = b.major_id
+JOIN courses c ON c.course_code = 'MAT 209'
+WHERE m.code = 'ECN'
+  AND b.code = 'ECN_STATS_PREREQ'
+ON CONFLICT DO NOTHING;
 
 -- Core: ECN 111
 INSERT INTO block_course_options(block_id, course_id)

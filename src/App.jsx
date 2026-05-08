@@ -30,6 +30,8 @@ function App() {
   const [coursesData, setCoursesData] = useState(null);
   const [majorRequirements, setMajorRequirements] = useState(null);
   const [loadError, setLoadError] = useState("");
+  // Stores the user's explicit choice for each or_group: { [parentCode]: chosenChildCode }
+  const [orGroupSelections, setOrGroupSelections] = useState({});
 
   useEffect(() => {
     async function loadPlannerData() {
@@ -136,12 +138,6 @@ function App() {
     return new Set(plan[semesterIndex].courses.filter(Boolean).map(normalizeCourse));
   }
 
-  function countCSCoursesInSemester(semester) {
-    return semester.courses.filter(
-      (course) => course && normalizeCourse(course).startsWith("CSC"),
-    ).length;
-  }
-
   function isCourseAlreadyPlanned(plan, code) {
     const normalized = normalizeCourse(code);
 
@@ -238,7 +234,6 @@ function App() {
     const term = getTermFromSemesterName(plan[semesterIndex].name);
     const completedBefore = getCompletedBeforeSemester(plan, semesterIndex);
     const currentSemester = getCoursesInSemester(plan, semesterIndex);
-    const cscCount = countCSCoursesInSemester(plan[semesterIndex]);
 
     if (isCourseAlreadyPlanned(plan, normalizedCode)) return false;
     if (course.offered?.length && !course.offered.includes(term)) return false;
@@ -260,36 +255,45 @@ function App() {
       return false;
     }
 
-    const isFirstTwoYears = semesterIndex <= 3;
+    const isFirstYear = semesterIndex <= 1;
     const currentSemesterCourses = plan[semesterIndex].courses
       .filter(Boolean)
       .map(normalizeCourse);
 
-    const currentCSCourses = currentSemesterCourses.filter((course) =>
-      course.startsWith("CSC"),
+    const dept = normalizedCode.match(/^[A-Z]+/)?.[0] ?? "";
+    const sameDeptCourses = currentSemesterCourses.filter(
+      (c) => c.match(/^[A-Z]+/)?.[0] === dept,
     );
 
-    if (normalizedCode.startsWith("CSC")) {
-      if (isFirstTwoYears) {
-        const has208Already = currentCSCourses.includes("CSC208");
+    if (isFirstYear) {
+      // First year: max 1 per dept. Exception: CSC-208 may share a semester
+      // with one other CSC course (e.g. CSC-161 + CSC-208 in Spring 1st Year).
+      if (normalizedCode.startsWith("CSC")) {
+        const has208Already = sameDeptCourses.includes("CSC208");
         const isAdding208 = normalizedCode === "CSC208";
-
         if (has208Already || isAdding208) {
-          if (currentCSCourses.length >= 2) {
-            return false;
-          }
+          if (sameDeptCourses.length >= 2) return false;
         } else {
-          if (currentCSCourses.length >= 1) {
-            return false;
-          }
+          if (sameDeptCourses.length >= 1) return false;
         }
       } else {
-        if (cscCount >= 2) {
-          return false;
-        }
+        if (sameDeptCourses.length >= 1) return false;
       }
+    } else {
+      if (sameDeptCourses.length >= 2) return false;
     }
     const prereqGroups = course.prerequisiteGroups || [];
+
+    // Level-based guardrail: prevent ungated courses from appearing too early.
+    // Only applies when no explicit prerequisites and no explicit min_semester_index.
+    const hasExplicitMinSemester =
+      rule?.minSemesterIndex !== null && rule?.minSemesterIndex !== undefined;
+    if (prereqGroups.length === 0 && !hasExplicitMinSemester) {
+      const courseNum = getCourseNumber(normalizedCode);
+      if (courseNum >= 300 && semesterIndex < 4) return false;
+      if (courseNum >= 200 && semesterIndex < 2) return false;
+    }
+
     for (const group of prereqGroups) {
       const isSatisfied = group.options.some((prereq) => {
         const normalizedPrereq = normalizeCourse(prereq);
@@ -445,16 +449,16 @@ function App() {
       ),
     );
 
-    return (coursesData?.courses || [])
-      .filter((course) => {
-        const normalized = normalizeCourse(course.code);
-        if (alreadyTaken.has(normalized)) return false;
-        if (majorCodes.has(normalized)) return false;
+    const specialSuffixes = [397, 398, 399, 495, 499];
 
-        const number = getCourseNumber(normalized);
-        return number >= 100 && number < 200;
-      })
-      .sort((first, second) => first.id.localeCompare(second.id));
+    return (coursesData?.courses || []).filter((course) => {
+      const normalized = normalizeCourse(course.code);
+      if (alreadyTaken.has(normalized)) return false;
+      if (majorCodes.has(normalized)) return false;
+      const num = getCourseNumber(course.code);
+      if (specialSuffixes.includes(num)) return false;
+      return true;
+    });
   }
 
   function buildRemainingRequirements(alreadyTaken) {
@@ -465,9 +469,37 @@ function App() {
     const remainingSingles = [];
     const remainingGroups = [];
 
+    // For each or_group, use the student's explicit selection.
+    // Fall back to the first child if no selection has been made yet.
+    const chosenOrChild = {};
+    for (const block of majorRequirements.blocks || []) {
+      if (block.ruleType !== "or_group" || !block.orChildCodes?.length) continue;
+      const childBlocks = (majorRequirements.blocks || []).filter((b) =>
+        block.orChildCodes.includes(b.code),
+      );
+      const explicitChoice = orGroupSelections[block.code];
+      if (explicitChoice && childBlocks.some((c) => c.code === explicitChoice)) {
+        chosenOrChild[block.code] = explicitChoice;
+      } else {
+        chosenOrChild[block.code] = childBlocks[0]?.code;
+      }
+    }
+
     for (const block of majorRequirements.blocks || []) {
       const normalizedValues = block.courseCodes.map(normalizeCourse);
       if (normalizedValues.length === 0) continue;
+
+      // Skip or_group parent blocks — their chosen child handles the work
+      if (block.ruleType === "or_group") continue;
+
+      // For or_group children: only process the chosen one, skip the rest
+      if (block.orParentCode) {
+        if (chosenOrChild[block.orParentCode] !== block.code) continue;
+        // Check if the chosen child is already fully satisfied — if so, skip it too
+        const needed = block.minCount || 1;
+        const taken = normalizedValues.filter((c) => alreadyTaken.has(c)).length;
+        if (taken >= needed) continue;
+      }
 
       if (block.ruleType === "must_take") {
         for (const code of normalizedValues) {
@@ -505,6 +537,33 @@ function App() {
           });
         }
       }
+
+      if (block.ruleType === "custom") {
+        if ((block.minCredits || 0) > 0) {
+          const completedCredits = normalizedValues.reduce((total, code) => {
+            if (!alreadyTaken.has(code)) return total;
+            return total + (courseMap[code]?.credits || 0);
+          }, 0);
+          if (completedCredits < block.minCredits) {
+            remainingGroups.push({
+              needed: null,
+              neededCredits: block.minCredits - completedCredits,
+              codes: normalizedValues.filter((code) => !alreadyTaken.has(code)),
+            });
+          }
+        } else if ((block.minCount || 0) > 0) {
+          const takenCount = normalizedValues.filter((code) =>
+            alreadyTaken.has(code),
+          ).length;
+          if (takenCount < block.minCount) {
+            remainingGroups.push({
+              needed: block.minCount - takenCount,
+              neededCredits: null,
+              codes: normalizedValues.filter((code) => !alreadyTaken.has(code)),
+            });
+          }
+        }
+      }
     }
 
     return { remainingSingles, remainingGroups };
@@ -528,43 +587,56 @@ function App() {
     const { remainingSingles, remainingGroups } =
       buildRemainingRequirements(alreadyTaken);
 
-    let electivePool = getValidElectives(alreadyTaken);
-    const maxSlots = Math.max(
-      ...updated.map((semester) => semester.courses.length),
-    );
+    // TUT-100 is a universal Grinnell requirement for all first-year students.
+    // Inject it at the front of remainingSingles so Pass 1 places it first.
+    const tutCode = normalizeCourse("TUT 100");
+    if (!alreadyTaken.has(tutCode) && courseMap[tutCode]) {
+      remainingSingles.unshift(tutCode);
+    }
 
-    for (let slotIndex = 0; slotIndex < maxSlots; slotIndex++) {
+    // Pass 1: required courses only — repeat until no more can be placed.
+    // The while loop handles prerequisite chains: placing CSC-151 unlocks
+    // CSC-161 in the next round, which unlocks CSC-207, etc.
+    let madeProgress = true;
+    while (madeProgress) {
+      madeProgress = false;
       for (
         let semesterIndex = 0;
         semesterIndex < updated.length;
         semesterIndex++
       ) {
-        if (slotIndex >= updated[semesterIndex].courses.length) continue;
-        if (updated[semesterIndex].courses[slotIndex]) continue;
-
-        const validOptions = [];
-
-        for (const code of remainingSingles) {
-          if (canPlaceCourse(updated, semesterIndex, code)) {
-            validOptions.push({ type: "single", code });
-          }
-        }
-
         for (
-          let groupIndex = 0;
-          groupIndex < remainingGroups.length;
-          groupIndex++
+          let slotIndex = 0;
+          slotIndex < updated[semesterIndex].courses.length;
+          slotIndex++
         ) {
-          for (const code of remainingGroups[groupIndex].codes) {
+          if (updated[semesterIndex].courses[slotIndex]) continue;
+
+          const validOptions = [];
+
+          for (const code of remainingSingles) {
             if (canPlaceCourse(updated, semesterIndex, code)) {
-              validOptions.push({ type: "group", code, groupIndex });
+              validOptions.push({ type: "single", code });
             }
           }
-        }
 
-        if (validOptions.length > 0) {
+          for (
+            let groupIndex = 0;
+            groupIndex < remainingGroups.length;
+            groupIndex++
+          ) {
+            for (const code of remainingGroups[groupIndex].codes) {
+              if (canPlaceCourse(updated, semesterIndex, code)) {
+                validOptions.push({ type: "group", code, groupIndex });
+              }
+            }
+          }
+
+          if (validOptions.length === 0) continue;
+
           const choice = getBestSequencedOption(validOptions, semesterIndex);
           updated[semesterIndex].courses[slotIndex] = courseMap[choice.code].id;
+          madeProgress = true;
 
           if (choice.type === "single") {
             const indexToRemove = remainingSingles.indexOf(choice.code);
@@ -587,44 +659,72 @@ function App() {
               remainingGroups.splice(choice.groupIndex, 1);
             }
           }
-
-          continue;
         }
+      }
+    }
+
+    // Pass 2: electives — recalculate pool so it excludes anything placed in pass 1.
+    const takenAfterRequired = new Set(
+      updated.flatMap((s) => s.courses).filter(Boolean).map(normalizeCourse),
+    );
+    let electivePool = getValidElectives(takenAfterRequired);
+
+    for (
+      let semesterIndex = 0;
+      semesterIndex < updated.length;
+      semesterIndex++
+    ) {
+      for (
+        let slotIndex = 0;
+        slotIndex < updated[semesterIndex].courses.length;
+        slotIndex++
+      ) {
+        if (updated[semesterIndex].courses[slotIndex]) continue;
 
         const electives = electivePool.filter((course) =>
           canPlaceCourse(updated, semesterIndex, course.code),
         );
 
-        if (electives.length > 0) {
-          const choice = getBestSequencedOption(
-            electives.map((course) => ({ code: course.code, course })),
-            semesterIndex,
-          ).course;
-          updated[semesterIndex].courses[slotIndex] = choice.id;
+        if (electives.length === 0) continue;
 
-          const indexToRemove = electivePool.findIndex(
-            (course) =>
-              normalizeCourse(course.code) === normalizeCourse(choice.code),
-          );
+        const choice = getBestSequencedOption(
+          electives.map((course) => ({ code: course.code, course })),
+          semesterIndex,
+        ).course;
+        updated[semesterIndex].courses[slotIndex] = choice.id;
 
-          if (indexToRemove !== -1) {
-            electivePool.splice(indexToRemove, 1);
-          }
-
-          continue;
+        const indexToRemove = electivePool.findIndex(
+          (course) =>
+            normalizeCourse(course.code) === normalizeCourse(choice.code),
+        );
+        if (indexToRemove !== -1) {
+          electivePool.splice(indexToRemove, 1);
         }
+      }
+    }
 
-        const fillerCourses = getGeneralFillerCourses(updated).filter((course) =>
-          canPlaceCourse(updated, semesterIndex, course.code),
+    // Pass 3: fill remaining empty slots with any valid course.
+    for (
+      let semesterIndex = 0;
+      semesterIndex < updated.length;
+      semesterIndex++
+    ) {
+      for (
+        let slotIndex = 0;
+        slotIndex < updated[semesterIndex].courses.length;
+        slotIndex++
+      ) {
+        if (updated[semesterIndex].courses[slotIndex]) continue;
+
+        const fillerCourses = getGeneralFillerCourses(updated).filter(
+          (course) => canPlaceCourse(updated, semesterIndex, course.code),
         );
 
-        if (fillerCourses.length > 0) {
-          const choice = getBestSequencedOption(
-            fillerCourses.map((course) => ({ code: course.code, course })),
-            semesterIndex,
-          ).course;
-          updated[semesterIndex].courses[slotIndex] = choice.id;
-        }
+        if (fillerCourses.length === 0) continue;
+
+        const choice =
+          fillerCourses[Math.floor(Math.random() * fillerCourses.length)];
+        updated[semesterIndex].courses[slotIndex] = choice.id;
       }
     }
 
@@ -698,32 +798,17 @@ function App() {
         />
       </div>
 
-      <div
-        style={{
-          marginTop: "20px",
-          marginBottom: "20px",
-          display: "flex",
-          gap: "12px",
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
-        <label style={{ color: "black", fontWeight: "600" }}>
-          Major{" "}
+      <div className="controls-bar">
+        <label className="major-label">
+          Major
           <select
+            className="major-select"
             value={selectedMajorCode}
             onChange={(event) => {
               setSelectedMajorCode(event.target.value);
               resetPlan();
               setCheckedSemesters(null);
-            }}
-            style={{
-              border: "1px solid #bbb",
-              borderRadius: "6px",
-              padding: "10px",
-              color: "black",
-              backgroundColor: "white",
-              fontSize: "16px",
+              setOrGroupSelections({});
             }}
           >
             {majors.map((major) => (
@@ -734,94 +819,108 @@ function App() {
           </select>
         </label>
 
-        <button
-          onClick={autoFillPlan}
-          style={{
-            padding: "12px 20px",
-            backgroundColor: "#cc0033",
-            color: "white",
-            border: "none",
-            borderRadius: "8px",
-            cursor: "pointer",
-            fontSize: "16px",
-          }}
-        >
+        <button className="btn btn-primary" onClick={autoFillPlan}>
           Auto-Fill Remaining Plan
         </button>
 
-        <button
-          onClick={checkPlan}
-          style={{
-            padding: "12px 20px",
-            backgroundColor: "#111",
-            color: "white",
-            border: "none",
-            borderRadius: "8px",
-            cursor: "pointer",
-            fontSize: "16px",
-          }}
-        >
+        <button className="btn btn-secondary" onClick={checkPlan}>
           Check Requirements
         </button>
 
-        <button
-          onClick={resetPlan}
-          style={{
-            padding: "12px 20px",
-            backgroundColor: "#666",
-            color: "white",
-            border: "none",
-            borderRadius: "8px",
-            cursor: "pointer",
-            fontSize: "16px",
-          }}
-        >
+        <button className="btn btn-neutral" onClick={resetPlan}>
           Reset Plan
         </button>
       </div>
 
-      {warningMessage && (
-        <div
-          style={{
-            marginBottom: "20px",
-            padding: "12px 16px",
-            borderRadius: "8px",
-            backgroundColor: "#fff3cd",
-            border: "1px solid #ffe69c",
-            color: "#856404",
-            fontWeight: "500",
-          }}
-        >
-          {warningMessage}
+      {/* Sequence selector — shown only when the major has or_group blocks */}
+      {majorRequirements && (majorRequirements.blocks || []).some((b) => b.ruleType === "or_group") && (
+        <div style={{ padding: "0 32px 16px", display: "flex", flexDirection: "column", gap: "10px" }}>
+          {(majorRequirements.blocks || [])
+            .filter((b) => b.ruleType === "or_group" && b.orChildCodes?.length)
+            .map((orBlock) => {
+              const childBlocks = (majorRequirements.blocks || []).filter((b) =>
+                orBlock.orChildCodes.includes(b.code),
+              );
+              const selected = orGroupSelections[orBlock.code] || childBlocks[0]?.code;
+              return (
+                <div key={orBlock.code} style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#374151" }}>
+                    {orBlock.title}:
+                  </span>
+                  {childBlocks.map((child) => {
+                    const isSelected = selected === child.code;
+                    const label = child.title.replace(/^Sequence ([A-Z]):.*/, "Sequence $1");
+                    return (
+                      <button
+                        key={child.code}
+                        onClick={() => setOrGroupSelections((prev) => ({ ...prev, [orBlock.code]: child.code }))}
+                        style={{
+                          padding: "5px 14px",
+                          borderRadius: "7px",
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          border: isSelected ? "none" : "1.5px solid #e5e7eb",
+                          backgroundColor: isSelected ? "#cc0033" : "white",
+                          color: isSelected ? "white" : "#6b7280",
+                          transition: "all 0.15s ease",
+                          boxShadow: isSelected ? "0 1px 3px rgba(204,0,51,0.25)" : "none",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
         </div>
       )}
 
-      {loadError && (
-        <div
-          style={{
-            marginBottom: "20px",
-            padding: "12px 16px",
-            borderRadius: "8px",
-            backgroundColor: "#f8d7da",
-            border: "1px solid #f5c2c7",
-            color: "#842029",
-            fontWeight: "500",
-          }}
-        >
-          {loadError}
-        </div>
-      )}
+      <div className="app-alerts">
+        {warningMessage && (
+          <div
+            style={{
+              marginBottom: "16px",
+              padding: "12px 16px",
+              borderRadius: "8px",
+              backgroundColor: "#fff3cd",
+              border: "1px solid #ffe69c",
+              color: "#856404",
+              fontWeight: "500",
+            }}
+          >
+            {warningMessage}
+          </div>
+        )}
 
-      {!loadError && (!coursesData || !majorRequirements) && (
-        <p style={{ color: "black" }}>Loading planner data from SQL...</p>
-      )}
+        {loadError && (
+          <div
+            style={{
+              marginBottom: "16px",
+              padding: "12px 16px",
+              borderRadius: "8px",
+              backgroundColor: "#f8d7da",
+              border: "1px solid #f5c2c7",
+              color: "#842029",
+              fontWeight: "500",
+            }}
+          >
+            {loadError}
+          </div>
+        )}
+
+        {!loadError && (!coursesData || !majorRequirements) && (
+          <p style={{ color: "#6b7280" }}>Loading planner data…</p>
+        )}
+      </div>
 
       {coursesData && majorRequirements && (
         <>
           <SemestersTable
             semesters={semesters}
             onCourseSelect={handleManualCourseSelect}
-            courseOptions={majorCourseOptions}
+            courseOptions={coursesData?.courses || []}
           />
           <MajorRequirements
             semesters={checkedSemesters}

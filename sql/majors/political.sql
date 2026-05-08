@@ -228,15 +228,15 @@ SELECT c.id,
        v.notes
 FROM courses c
 JOIN (VALUES
-  ('POL 220',2,NULL,NULL,NULL,NULL,'Second-year standing.'),
-  ('POL 310',4,NULL,NULL,NULL,NULL,'Third- or fourth-year standing.'),
-  ('POL 319',4,NULL,NULL,NULL,NULL,'Third- or fourth-year standing.'),
-  ('POL 320',4,NULL,NULL,NULL,NULL,'Third- or fourth-year standing.'),
-  ('POL 350',4,NULL,NULL,NULL,NULL,'Third- or fourth-year standing.'),
-  ('POL 352',4,NULL,NULL,NULL,NULL,'Third- or fourth-year standing.'),
-  ('POL 354',4,NULL,NULL,NULL,NULL,'Third- or fourth-year standing.'),
-  ('POL 355',4,NULL,NULL,NULL,NULL,'Third- or fourth-year standing.'),
-  ('POL 356',4,NULL,NULL,NULL,NULL,'Third- or fourth-year standing.')
+  ('POL 220',2,NULL,NULL::integer,NULL::integer,NULL::integer,'Second-year standing.'),
+  ('POL 310',4,NULL,NULL::integer,NULL::integer,NULL::integer,'Third- or fourth-year standing.'),
+  ('POL 319',4,NULL,NULL::integer,NULL::integer,NULL::integer,'Third- or fourth-year standing.'),
+  ('POL 320',4,NULL,NULL::integer,NULL::integer,NULL::integer,'Third- or fourth-year standing.'),
+  ('POL 350',4,NULL,NULL::integer,NULL::integer,NULL::integer,'Third- or fourth-year standing.'),
+  ('POL 352',4,NULL,NULL::integer,NULL::integer,NULL::integer,'Third- or fourth-year standing.'),
+  ('POL 354',4,NULL,NULL::integer,NULL::integer,NULL::integer,'Third- or fourth-year standing.'),
+  ('POL 355',4,NULL,NULL::integer,NULL::integer,NULL::integer,'Third- or fourth-year standing.'),
+  ('POL 356',4,NULL,NULL::integer,NULL::integer,NULL::integer,'Third- or fourth-year standing.')
 ) AS v(
   course_code,
   min_semester_index,
