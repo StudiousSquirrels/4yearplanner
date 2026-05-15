@@ -284,8 +284,8 @@ function App() {
     }
     const prereqGroups = course.prerequisiteGroups || [];
 
-    // Level-based guardrail: prevent ungated courses from appearing too early.
-    // Only applies when no explicit prerequisites and no explicit min_semester_index.
+    // prevent high-level courses from appearing too early.
+    // Only applies when no specific prerequisites and no specific min_semester_index.
     const hasExplicitMinSemester =
       rule?.minSemesterIndex !== null && rule?.minSemesterIndex !== undefined;
     if (prereqGroups.length === 0 && !hasExplicitMinSemester) {
@@ -920,7 +920,7 @@ function App() {
           <SemestersTable
             semesters={semesters}
             onCourseSelect={handleManualCourseSelect}
-            courseOptions={coursesData?.courses || []}
+            courseOptions={coursesData?.courses || []} // added line so it doesn't break when coursesData is null during loading
           />
           <MajorRequirements
             semesters={checkedSemesters}

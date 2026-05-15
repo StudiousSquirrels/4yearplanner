@@ -245,7 +245,7 @@ function MajorRequirements({ semesters, coursesData, majorRequirements }) {
           width: "2px", backgroundColor: "#e5e7eb", borderRadius: "1px",
         }} />
 
-        {blocks.map(({ block, status, canAutoCheck, completed, isNotNeeded }, idx) => {
+        {blocks.map(({ block, status, canAutoCheck, completed, isNotNeeded }) => {
           const isOpen = collapsed[block.code] !== true;
           const hasCourses = block.courseCodes.length > 0;
 
